@@ -1058,6 +1058,13 @@
           </div>
           <div class="chart-caption">Jumlah truck masuk per jam, hari ini</div>
         </div>
+        <div class="section-label">Grafik Truck Keluar per Jam (Hari Ini)</div>
+        <div class="card">
+          <div class="chart-wrap">
+            <div class="chart-bars" id="hourly-chart-out"></div>
+          </div>
+          <div class="chart-caption">Jumlah truck keluar per jam, hari ini</div>
+        </div>
         <div class="section-label">Riwayat</div>
         <div class="card">
           <div class="filters">
@@ -1600,6 +1607,7 @@
         renderInside();
         renderHistory();
         renderHourlyChart();
+        renderHourlyChartOut();
       }
       let overdueThresholdHours = 3;
       function renderStats() {
@@ -1608,8 +1616,25 @@
         const today = records.filter(
           (r) => fmtDate(new Date(r.waktuMasuk)) === todayStr,
         ).length;
+        const outToday = records.filter(
+          (r) => r.waktuKeluar && fmtDate(new Date(r.waktuKeluar)) === todayStr,
+        ).length;
+        const totalToday = records.filter(
+          (r) =>
+            fmtDate(new Date(r.waktuMasuk)) === todayStr ||
+            (r.waktuKeluar && fmtDate(new Date(r.waktuKeluar)) === todayStr),
+        ).length;
+        const overdueCount = records.filter((r) => {
+          if (r.status !== "di-dalam") return false;
+          const mins = Math.floor((new Date() - new Date(r.waktuMasuk)) / 60000);
+          return mins > overdueThresholdHours * 60;
+        }).length;
+      
         document.getElementById("stat-inside").textContent = inside;
         document.getElementById("stat-today").textContent = today;
+        document.getElementById("stat-out-today").textContent = outToday;
+        document.getElementById("stat-total-today").textContent = totalToday;
+        document.getElementById("stat-overdue").textContent = overdueCount;
       }
       document
         .getElementById("overdue-threshold")
@@ -1633,7 +1658,7 @@
             const mins = Math.floor(
               (new Date() - new Date(r.waktuMasuk)) / 60000,
             );
-            const overdue = mins > 180; // lebih dari 3 jam ditandai
+            const overdue = mins > overdueThresholdHours * 60; // GANTI (BODOH) // lebih dari 3 jam ditandai
             return `
     <div class="truck-card ${overdue ? "overdue" : ""}">
       <div class="truck-top">
@@ -1890,6 +1915,31 @@
       <div class="chart-bar-col" title="Jam ${pad(hour)}:00 — ${c} truck">
         ${c > 0 ? `<span class="chart-bar-count">${c}</span>` : ""}
         <div class="chart-bar" style="height:${heightPct}%;"></div>
+        ${showLabel ? `<span class="chart-bar-label">${pad(hour)}</span>` : ""}
+      </div>`;
+          })
+          .join("");
+      }
+      function renderHourlyChartOut() {
+        const container = document.getElementById("hourly-chart-out");
+        const todayStr = fmtDate(new Date());
+        const todayOutRecords = records.filter(
+          (r) => r.waktuKeluar && fmtDate(new Date(r.waktuKeluar)) === todayStr,
+        );
+        const counts = new Array(24).fill(0);
+        todayOutRecords.forEach((r) => {
+          const h = new Date(r.waktuKeluar).getHours();
+          counts[h]++;
+        });
+        const maxCount = Math.max(...counts, 1);
+        container.innerHTML = counts
+          .map((c, hour) => {
+            const heightPct = c === 0 ? 0 : Math.max((c / maxCount) * 100, 8);
+            const showLabel = hour % 3 === 0;
+            return `
+      <div class="chart-bar-col" title="Jam ${pad(hour)}:00 — ${c} truck">
+        ${c > 0 ? `<span class="chart-bar-count">${c}</span>` : ""}
+        <div class="chart-bar" style="height:${heightPct}%;background:#7A7F8C;"></div>
         ${showLabel ? `<span class="chart-bar-label">${pad(hour)}</span>` : ""}
       </div>`;
           })
