@@ -121,6 +121,89 @@
         font-size: 14px;
       }
 
+            .pill-select {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        color: #fff;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 12.5px;
+        font-weight: 700;
+        padding: 3px 6px;
+        border-radius: 6px;
+        cursor: pointer;
+        margin: 0 2px;
+      }
+      .pill-select option {
+        background: var(--asphalt);
+        color: #fff;
+      }
+      .btn-export {
+        background: var(--card);
+        border: 1.5px solid var(--line);
+        color: var(--ink);
+        font-family: "Space Grotesk", sans-serif;
+        font-weight: 600;
+        font-size: 13.5px;
+        padding: 9px 14px;
+        border-radius: 9px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn-export:hover {
+        border-color: var(--yellow-dim);
+        background: #fffbef;
+      }
+      .chart-wrap {
+        overflow-x: auto;
+      }
+      .chart-bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 140px;
+        min-width: 100%;
+        padding-top: 20px;
+      }
+      .chart-bar-col {
+        flex: 1;
+        min-width: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        height: 100%;
+        position: relative;
+      }
+      .chart-bar {
+        width: 100%;
+        max-width: 22px;
+        background: var(--yellow);
+        border-radius: 3px 3px 0 0;
+        transition: height 0.3s ease;
+        min-height: 2px;
+      }
+      .chart-bar-count {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 10px;
+        color: var(--ink-soft);
+        margin-bottom: 3px;
+      }
+      .chart-bar-label {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9.5px;
+        color: var(--ink-soft);
+        margin-top: 6px;
+        white-space: nowrap;
+      }
+      .chart-caption {
+        font-size: 12px;
+        color: var(--ink-soft);
+        margin-top: 10px;
+        text-align: center;
+      }
+      
       main {
         max-width: 760px;
         margin: 0 auto;
@@ -829,6 +912,24 @@
               <span class="dot" style="background: #8bb8ff"></span>Masuk hari
               ini: <b id="stat-today">0</b>
             </div>
+                        <div class="stat-pill">
+              <span class="dot" style="background: #7a7f8c"></span>Keluar
+              hari ini: <b id="stat-out-today">0</b>
+            </div>
+            <div class="stat-pill">
+              <span class="dot" style="background: #9b7ede"></span>Total truk
+              hari ini: <b id="stat-total-today">0</b>
+            </div>
+            <div class="stat-pill" id="stat-overdue-pill">
+              <span class="dot" style="background: #e8590c"></span>
+              <span>Overdue &gt;</span>
+              <select id="overdue-threshold" class="pill-select">
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="8">8</option>
+              </select>
+              <span>jam:</span> <b id="stat-overdue">0</b>
+            </div>
           </div>
           <div class="user-row">
             <span id="user-email-label"></span>
@@ -950,7 +1051,13 @@
 
         <div class="section-label">Truck Sedang Di Dalam</div>
         <div id="inside-list"></div>
-
+        <div class="section-label">Grafik Truck Masuk per Jam (Hari Ini)</div>
+        <div class="card">
+          <div class="chart-wrap">
+            <div class="chart-bars" id="hourly-chart"></div>
+          </div>
+          <div class="chart-caption">Jumlah truck masuk per jam, hari ini</div>
+        </div>
         <div class="section-label">Riwayat</div>
         <div class="card">
           <div class="filters">
@@ -965,6 +1072,14 @@
               placeholder="yyyy-mm-dd (opsional)"
             />
           </div>
+          <button
+            class="btn-export"
+            id="btn-export-csv"
+            style="margin-bottom: 14px"
+            type="button"
+          >
+            ⬇ Export CSV / Excel
+          </button>
           <div id="history-list"></div>
         </div>
 
@@ -1484,8 +1599,9 @@
         renderStats();
         renderInside();
         renderHistory();
+        renderHourlyChart();
       }
-
+      let overdueThresholdHours = 3;
       function renderStats() {
         const todayStr = fmtDate(new Date());
         const inside = records.filter((r) => r.status === "di-dalam").length;
@@ -1495,7 +1611,13 @@
         document.getElementById("stat-inside").textContent = inside;
         document.getElementById("stat-today").textContent = today;
       }
-
+      document
+        .getElementById("overdue-threshold")
+        .addEventListener("change", (e) => {
+          overdueThresholdHours = parseInt(e.target.value, 10);
+          renderStats();
+          renderInside();
+        });
       function renderInside() {
         const container = document.getElementById("inside-list");
         const active = records
@@ -1743,6 +1865,120 @@
 
       // live-update durasi setiap menit
       setInterval(renderInside, 30000);
+
+      ["sim", "stnk", "ktp"].forEach(renderDocSlot);
+    </script>
+     function renderHourlyChart() {
+        const container = document.getElementById("hourly-chart");
+        const todayStr = fmtDate(new Date());
+        const todayRecords = records.filter(
+          (r) => fmtDate(new Date(r.waktuMasuk)) === todayStr,
+        );
+
+        const counts = new Array(24).fill(0);
+        todayRecords.forEach((r) => {
+          const h = new Date(r.waktuMasuk).getHours();
+          counts[h]++;
+        });
+
+        const maxCount = Math.max(...counts, 1);
+
+        container.innerHTML = counts
+          .map((c, hour) => {
+            const heightPct = c === 0 ? 0 : Math.max((c / maxCount) * 100, 8);
+            const showLabel = hour % 3 === 0;
+            return `
+      <div class="chart-bar-col" title="Jam ${pad(hour)}:00 — ${c} truck">
+        ${c > 0 ? `<span class="chart-bar-count">${c}</span>` : ""}
+        <div class="chart-bar" style="height:${heightPct}%;"></div>
+        ${showLabel ? `<span class="chart-bar-label">${pad(hour)}</span>` : ""}
+      </div>`;
+          })
+          .join("");
+      }
+
+      function exportCSV() {
+        if (records.length === 0) {
+          showToast("Belum ada data untuk di-export.");
+          return;
+        }
+
+        const headers = [
+          "Plat Nomor",
+          "Jenis Kendaraan",
+          "Nama Sopir",
+          "Perusahaan/Ekspedisi",
+          "Keperluan",
+          "No Surat Jalan",
+          "Tanggal Masuk",
+          "Jam Masuk",
+          "Jam Keluar",
+          "Durasi",
+          "Status",
+          "Catatan",
+        ];
+
+        const rows = [...records]
+          .sort((a, b) => new Date(a.waktuMasuk) - new Date(b.waktuMasuk))
+          .map((r) => {
+            const durasi =
+              r.status !== "di-dalam"
+                ? durationText(r.waktuMasuk, r.waktuKeluar)
+                : "-";
+            return [
+              r.plat || "",
+              r.jenis || "",
+              r.sopir || "",
+              r.perusahaan || "",
+              r.tujuan || "",
+              r.surat || "",
+              fmtDate(new Date(r.waktuMasuk)),
+              fmtTime(new Date(r.waktuMasuk)),
+              r.waktuKeluar ? fmtTime(new Date(r.waktuKeluar)) : "-",
+              durasi,
+              r.status === "di-dalam" ? "Di Dalam" : "Selesai",
+              r.catatan || "",
+            ];
+          });
+
+        const escapeCsv = (val) => {
+          const s = String(val);
+          if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+            return '"' + s.replace(/"/g, '""') + '"';
+          }
+          return s;
+        };
+
+        const csvContent = [headers, ...rows]
+          .map((row) => row.map(escapeCsv).join(","))
+          .join("\n");
+
+        const blob = new Blob(["\uFEFF" + csvContent], {
+          type: "text/csv;charset=utf-8;",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "gate-log-truck-" + fmtDate(new Date()) + ".csv";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        showToast("File CSV berhasil diunduh.");
+      }
+
+      document
+        .getElementById("btn-export-csv")
+        .addEventListener("click", exportCSV);
+
+      /* ===== AKHIR TAMBAHAN ===== */
+
+      // live-update durasi setiap menit
+      setInterval(() => {
+        renderInside();
+        renderStats();
+      }, 30000);
 
       ["sim", "stnk", "ktp"].forEach(renderDocSlot);
     </script>
